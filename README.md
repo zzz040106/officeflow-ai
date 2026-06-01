@@ -32,7 +32,7 @@ npm start
 启动成功后，终端会显示类似：
 
 ```text
-OfficeFlow AI running at http://127.0.0.1:5173
+OfficeFlow AI running at http://127.0.0.1:
 ```
 
 把终端里显示的地址复制到浏览器打开即可。
@@ -63,9 +63,6 @@ npm start
 
 请确认你不是直接双击 `index.html` 打开的页面。文件上传和 AI 接口需要本地服务支持，必须通过 `npm start` 启动后，再打开终端里显示的本地地址。
 
-### 端口不是 5173 怎么办
-
-如果 5173 被占用，程序会自动尝试下一个端口。以终端实际显示的地址为准。
 
 ## 使用方式
 
@@ -94,30 +91,3 @@ npm start
 
 API Key 只保存在本地浏览器或本地运行环境中。配置 API Key 后，可以调用真实大模型生成内容；不配置也可以使用本地演示模式体验主要流程。
 
-## 项目结构
-
-```text
-.
-├── index.html
-├── package.json
-├── package-lock.json
-├── src/
-│   ├── app.js
-│   ├── styles.css
-│   ├── officeAI.js
-│   ├── workflowEngine.js
-│   └── httpRequest.js
-├── server/
-│   ├── apiServer.mjs
-│   ├── llmOfficeAI.mjs
-│   ├── fileExtractor.mjs
-│   ├── fileExporter.mjs
-│   ├── store.mjs
-│   └── templates.mjs
-└── scripts/
-    └── serve.mjs
-```
-
-## 开发说明
-
-本项目是本地演示型 Web 应用，默认不需要数据库。运行数据、收藏记录和对话记录主要保存在本地环境中，适合个人演示和面试讲解。
