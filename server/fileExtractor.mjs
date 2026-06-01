@@ -44,7 +44,55 @@ function shouldTakeZipEntry(name, wanted) {
   return wanted(name);
 }
 
-function readZipEntries(buffer, wanted) {
+function inflateZipEntry(method, compressed) {
+  if (method === 0) return compressed;
+  if (method === 8) return inflateRawSync(compressed);
+  return null;
+}
+
+function readZipEntriesFromCentralDirectory(buffer, wanted) {
+  const entries = new Map();
+  const minEocdOffset = Math.max(0, buffer.length - 65_557);
+  let eocdOffset = -1;
+  for (let index = buffer.length - 22; index >= minEocdOffset; index -= 1) {
+    if (buffer.readUInt32LE(index) === 0x06054b50) {
+      eocdOffset = index;
+      break;
+    }
+  }
+  if (eocdOffset < 0) return entries;
+
+  const totalEntries = buffer.readUInt16LE(eocdOffset + 10);
+  let offset = buffer.readUInt32LE(eocdOffset + 16);
+
+  for (let count = 0; count < totalEntries && offset + 46 <= buffer.length; count += 1) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) break;
+    const method = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const fileNameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const localHeaderOffset = buffer.readUInt32LE(offset + 42);
+    const nameStart = offset + 46;
+    const nameEnd = nameStart + fileNameLength;
+    const name = buffer.subarray(nameStart, nameEnd).toString("utf8");
+
+    if (shouldTakeZipEntry(name, wanted) && localHeaderOffset + 30 <= buffer.length) {
+      const localNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
+      const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
+      const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
+      const dataEnd = dataStart + compressedSize;
+      const inflated = inflateZipEntry(method, buffer.subarray(dataStart, dataEnd));
+      if (inflated) entries.set(name, inflated);
+    }
+
+    offset = nameEnd + extraLength + commentLength;
+  }
+
+  return entries;
+}
+
+function readZipEntriesFromLocalHeaders(buffer, wanted) {
   const entries = new Map();
   let offset = 0;
 
@@ -62,17 +110,20 @@ function readZipEntries(buffer, wanted) {
     const compressed = buffer.subarray(dataStart, dataEnd);
 
     if (shouldTakeZipEntry(name, wanted)) {
-      if (method === 0) {
-        entries.set(name, compressed);
-      } else if (method === 8) {
-        entries.set(name, inflateRawSync(compressed));
-      }
+      const inflated = inflateZipEntry(method, compressed);
+      if (inflated) entries.set(name, inflated);
     }
 
     offset = dataEnd;
   }
 
   return entries;
+}
+
+function readZipEntries(buffer, wanted) {
+  const centralEntries = readZipEntriesFromCentralDirectory(buffer, wanted);
+  if (centralEntries.size) return centralEntries;
+  return readZipEntriesFromLocalHeaders(buffer, wanted);
 }
 
 function extractTagBlocks(xml, tagName) {

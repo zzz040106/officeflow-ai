@@ -43,6 +43,53 @@ async function readRawBody(request, maxBytes = 120_000_000) {
   return Buffer.concat(chunks);
 }
 
+function parseMultipartUpload(raw, contentType) {
+  const boundaryMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
+  const boundary = boundaryMatch?.[1] || boundaryMatch?.[2];
+  if (!boundary) {
+    throw new Error("上传请求缺少 multipart boundary");
+  }
+
+  const boundaryBuffer = Buffer.from(`--${boundary}`);
+  const headerBreak = Buffer.from("\r\n\r\n");
+  let cursor = raw.indexOf(boundaryBuffer);
+
+  while (cursor >= 0) {
+    let partStart = cursor + boundaryBuffer.length;
+    if (raw[partStart] === 45 && raw[partStart + 1] === 45) break;
+    if (raw[partStart] === 13 && raw[partStart + 1] === 10) partStart += 2;
+
+    const headersEnd = raw.indexOf(headerBreak, partStart);
+    if (headersEnd < 0) break;
+
+    const nextBoundary = raw.indexOf(boundaryBuffer, headersEnd + headerBreak.length);
+    if (nextBoundary < 0) break;
+
+    const headers = raw.subarray(partStart, headersEnd).toString("utf8");
+    let dataEnd = nextBoundary;
+    if (raw[dataEnd - 2] === 13 && raw[dataEnd - 1] === 10) dataEnd -= 2;
+    const dataBuffer = raw.subarray(headersEnd + headerBreak.length, dataEnd);
+
+    const disposition = /content-disposition:\s*([^\r\n]+)/i.exec(headers)?.[1] || "";
+    const fileNameStar = /filename\*=UTF-8''([^;\r\n]+)/i.exec(disposition)?.[1];
+    const fileNameRaw = /filename="([^"]*)"/i.exec(disposition)?.[1] || /filename=([^;\r\n]+)/i.exec(disposition)?.[1];
+    const contentTypeHeader = /content-type:\s*([^\r\n]+)/i.exec(headers)?.[1]?.trim() || "";
+
+    if (fileNameStar || fileNameRaw) {
+      const rawName = fileNameStar ? decodeURIComponent(fileNameStar) : fileNameRaw;
+      return {
+        name: rawName || "uploaded-file",
+        type: contentTypeHeader,
+        dataBuffer,
+      };
+    }
+
+    cursor = nextBoundary;
+  }
+
+  throw new Error("没有读取到上传文件，请重新选择文件。");
+}
+
 function createRuntimeServices({ fetchImpl, actions, aiSettings }) {
   return {
     httpRequest: async (config, context) =>
@@ -128,6 +175,14 @@ async function handleApiRequest(request, response, { store, fetchImpl }) {
 
   if (request.method === "POST" && url.pathname === "/api/extract-file") {
     const contentType = request.headers["content-type"] || "";
+    if (contentType.startsWith("multipart/form-data")) {
+      const raw = await readRawBody(request);
+      const upload = parseMultipartUpload(raw, contentType);
+      const result = await extractUploadedFile(upload);
+      sendJson(response, 200, result);
+      return true;
+    }
+
     if (contentType.startsWith("application/octet-stream")) {
       const name = decodeURIComponent(request.headers["x-file-name"] || "uploaded-file");
       const type = request.headers["x-file-type"] || "";

@@ -1600,16 +1600,18 @@ async function apiFetch(path, options = {}) {
 }
 
 async function extractFileViaApi(file) {
-  const response = await fetch("/api/extract-file", {
-    method: "POST",
-    headers: {
-      "content-type": "application/octet-stream",
-      "x-file-name": encodeURIComponent(file.name),
-      "x-file-type": file.type || "application/octet-stream",
-    },
-    body: file,
-  });
-  const body = await response.json();
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  let response;
+  try {
+    response = await fetch("/api/extract-file", {
+      method: "POST",
+      body: formData,
+    });
+  } catch (error) {
+    throw new Error("上传连接失败，请确认已通过 npm start 启动本地服务，并用 http://127.0.0.1:5173/ 打开页面。");
+  }
+  const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(body.error || `Request failed with ${response.status}`);
   }
