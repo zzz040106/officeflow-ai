@@ -1,6 +1,8 @@
 import { inflateRawSync, inflateSync } from "node:zlib";
 
 const MAX_EXCEL_ROWS_PER_SHEET = 80;
+const MAX_EXCEL_SHEETS = 3;
+const MAX_WORD_PARAGRAPHS = 220;
 const MAX_PDF_TEXT_CHUNKS = 500;
 const MAX_INLINE_PDF_BYTES = 5_000_000;
 const MAX_OFFICE_BYTES = 120_000_000;
@@ -24,7 +26,13 @@ function decodeText(buffer) {
   return buffer.toString("latin1");
 }
 
-function readZipEntries(buffer) {
+function shouldTakeZipEntry(name, wanted) {
+  if (!wanted) return true;
+  if (wanted instanceof Set) return wanted.has(name);
+  return wanted(name);
+}
+
+function readZipEntries(buffer, wanted) {
   const entries = new Map();
   let offset = 0;
 
@@ -41,10 +49,12 @@ function readZipEntries(buffer) {
     const name = buffer.subarray(fileNameStart, fileNameEnd).toString("utf8");
     const compressed = buffer.subarray(dataStart, dataEnd);
 
-    if (method === 0) {
-      entries.set(name, compressed);
-    } else if (method === 8) {
-      entries.set(name, inflateRawSync(compressed));
+    if (shouldTakeZipEntry(name, wanted)) {
+      if (method === 0) {
+        entries.set(name, compressed);
+      } else if (method === 8) {
+        entries.set(name, inflateRawSync(compressed));
+      }
     }
 
     offset = dataEnd;
@@ -69,16 +79,20 @@ function extractTextNodes(xml) {
 }
 
 function extractDocx(buffer) {
-  const entries = readZipEntries(buffer);
+  const entries = readZipEntries(buffer, new Set(["word/document.xml"]));
   const documentXml = entries.get("word/document.xml");
   if (!documentXml) {
     throw new Error("没有找到 Word 正文内容，请确认上传的是 .docx 文件。");
   }
 
   const xml = documentXml.toString("utf8");
-  const paragraphs = extractTagBlocks(xml, "w:p")
-    .map((block) => clean(extractTextNodes(block).join("")))
-    .filter(Boolean);
+  const paragraphs = [];
+  const paragraphPattern = /<w:p\b[\s\S]*?<\/w:p>/g;
+  let paragraphMatch;
+  while ((paragraphMatch = paragraphPattern.exec(xml)) && paragraphs.length < MAX_WORD_PARAGRAPHS) {
+    const text = clean(extractTextNodes(paragraphMatch[0]).join(""));
+    if (text) paragraphs.push(text);
+  }
 
   if (!paragraphs.length) {
     throw new Error("没有从 Word 文件中读取到可用文本。");
@@ -123,7 +137,11 @@ function extractCellValue(cellXml, sharedStrings) {
 }
 
 function extractXlsx(buffer) {
-  const entries = readZipEntries(buffer);
+  const entries = readZipEntries(buffer, (name) =>
+    name === "xl/sharedStrings.xml" ||
+    name === "xl/workbook.xml" ||
+    /^xl\/worksheets\/sheet\d+\.xml$/.test(name),
+  );
   const sheetEntries = [...entries.keys()]
     .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/.test(name))
     .sort((a, b) => Number(a.match(/\d+/)?.[0] || 0) - Number(b.match(/\d+/)?.[0] || 0));
@@ -135,14 +153,16 @@ function extractXlsx(buffer) {
   const sheetNames = extractSheetNames(entries);
   const parts = [];
 
-  sheetEntries.forEach((entryName, sheetIndex) => {
+  sheetEntries.slice(0, MAX_EXCEL_SHEETS).forEach((entryName, sheetIndex) => {
     const sheetName = sheetNames[sheetIndex] || `Sheet${sheetIndex + 1}`;
     const xml = entries.get(entryName).toString("utf8");
-    const rows = extractTagBlocks(xml, "row");
+    const rowPattern = /<row\b[\s\S]*?<\/row>/g;
     let rowCount = 0;
     parts.push(`工作表：${sheetName}`);
 
-    for (const rowXml of rows) {
+    let rowMatch;
+    while ((rowMatch = rowPattern.exec(xml)) && rowCount < MAX_EXCEL_ROWS_PER_SHEET) {
+      const rowXml = rowMatch[0];
       const cells = [];
       const cellPattern = /<c\b[^>]*\br="([A-Z]+)\d+"[^>]*>[\s\S]*?<\/c>/g;
       let match;
@@ -154,10 +174,9 @@ function extractXlsx(buffer) {
         parts.push(values.join("\t").replace(/\s+$/g, ""));
         rowCount += 1;
       }
-      if (rowCount >= MAX_EXCEL_ROWS_PER_SHEET) {
-        parts.push("（已截取前 200 行）");
-        break;
-      }
+    }
+    if (rowMatch) {
+      parts.push(`（已截取前 ${MAX_EXCEL_ROWS_PER_SHEET} 行）`);
     }
   });
 
@@ -261,9 +280,12 @@ export async function extractUploadedFile(payload) {
     throw new Error(`暂不支持 .${extension || "unknown"} 文件，请上传 txt、docx、pdf、xlsx 或 xlsm。`);
   }
 
+  const limited = ["docx", "xlsx", "xlsm", "xltx"].includes(extension);
   return {
     ok: true,
     fileName: name,
     text,
+    partial: limited,
+    note: limited ? "已快速提取文件中的关键文本，未完整还原全部格式。" : "",
   };
 }

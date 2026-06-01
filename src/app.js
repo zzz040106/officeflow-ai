@@ -2727,7 +2727,7 @@ readMaterialFile = function (file) {
   extractFileViaApi(file)
     .then((body) => {
       if (input) input.value = body.text || "";
-      if (status) status.textContent = `\u5df2\u89e3\u6790\uff1a${body.fileName || file.name}`;
+      if (status) status.textContent = body.note || `\u5df2\u89e3\u6790\uff1a${body.fileName || file.name}`;
     })
     .catch((error) => {
       if (status) status.textContent = `${error.message} \u8bf7\u6539\u4e3a\u624b\u52a8\u7c98\u8d34\u6587\u672c\u3002`;
@@ -3232,7 +3232,7 @@ async function readAgentFile(file) {
     state.chatMessages.push({
       role: "assistant",
       name: "OfficeFlow AI",
-      content: `已读取 ${file.name}。你可以直接说“生成会议纪要 Word”“提取合同摘要 Excel”或“整理成正式通知 PDF”。`,
+      content: `${body.note || `已读取 ${file.name}。`} 你可以直接说“生成会议纪要 Word”“提取合同摘要 Excel”或“整理成正式通知 PDF”。`,
     });
   } catch (error) {
     state.chatMessages.push({ role: "assistant", name: "OfficeFlow AI", content: `文件处理失败：${error.message}` });
