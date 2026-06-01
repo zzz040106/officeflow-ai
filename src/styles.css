@@ -968,6 +968,17 @@ button {
   color: #f9fafb;
 }
 
+.provider-config-panel select option {
+  background: #111827;
+  color: #f9fafb;
+}
+
+.provider-config-panel select:focus {
+  border-color: rgba(96, 165, 250, 0.72);
+  background: #1f2937;
+  color: #f9fafb;
+}
+
 .advanced-model-config {
   display: grid;
   gap: 10px;
