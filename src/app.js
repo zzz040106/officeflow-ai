@@ -82,8 +82,16 @@ const nodeElements = Object.fromEntries(
   ]),
 );
 
-const STATIC_MODE_MESSAGE =
-  "当前是 index.html 静态预览模式。模板和界面可以查看，调用 AI 与运行流程需要先执行 npm start，再通过 http://127.0.0.1:5173/ 打开。";
+function currentRuntimeAddressText() {
+  if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+    return `${window.location.origin}/`;
+  }
+  return "终端里显示的本地地址";
+}
+
+function staticModeMessage() {
+  return `当前是 index.html 静态预览模式。模板和界面可以查看，调用 AI 与运行流程需要先执行 npm start，再通过 ${currentRuntimeAddressText()} 打开。`;
+}
 
 const AI_CONFIG_STORAGE_KEY = "officeflow-ai-model-config";
 const AI_PROFILES_STORAGE_KEY = "officeflow-ai-model-profiles";
@@ -1609,7 +1617,7 @@ async function extractFileViaApi(file) {
       body: formData,
     });
   } catch (error) {
-    throw new Error("上传连接失败，请确认已通过 npm start 启动本地服务，并用 http://127.0.0.1:5173/ 打开页面。");
+    throw new Error(`上传连接失败，请确认已通过 npm start 启动本地服务，并用 ${currentRuntimeAddressText()} 打开页面。`);
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -1732,7 +1740,7 @@ async function toggleFavoriteWorkflow() {
 
 async function runWorkflow() {
   if (state.staticMode) {
-    setResult("需要后端服务", STATIC_MODE_MESSAGE);
+    setResult("需要后端服务", staticModeMessage());
     openInspector();
     return;
   }
@@ -1787,7 +1795,7 @@ async function sendAgentChat(event) {
   syncActiveConversation();
 
   if (state.staticMode) {
-    state.chatMessages.push({ role: "assistant", content: STATIC_MODE_MESSAGE, name: "OfficeFlow AI" });
+    state.chatMessages.push({ role: "assistant", content: staticModeMessage(), name: "OfficeFlow AI" });
     renderChatMessages();
     syncActiveConversation();
     return;
@@ -1919,7 +1927,7 @@ async function loadTemplates() {
   } catch (error) {
     state.staticMode = true;
     state.templates = cloneData(FALLBACK_TEMPLATES);
-    setResult("静态预览模式", STATIC_MODE_MESSAGE);
+    setResult("静态预览模式", staticModeMessage());
   }
   renderTemplates();
 }
@@ -2460,7 +2468,7 @@ sendAgentChat = async function (event) {
   if (state.staticMode) {
     state.chatMessages.push({
       role: "assistant",
-      content: "当前是 index.html 静态预览模式。AI 对话和运行流程需要先执行 npm start，再通过 http://127.0.0.1:5173/ 打开。",
+      content: staticModeMessage(),
       name: "OfficeFlow AI",
     });
     renderChatMessages();
@@ -3277,7 +3285,7 @@ sendAgentChat = async function (event) {
       const content = await generateAgentOfficeResult(prompt);
       state.chatMessages.push({ role: "assistant", content, name: "OfficeFlow Agent" });
     } else if (state.staticMode) {
-      state.chatMessages.push({ role: "assistant", content: STATIC_MODE_MESSAGE, name: "OfficeFlow AI" });
+      state.chatMessages.push({ role: "assistant", content: staticModeMessage(), name: "OfficeFlow AI" });
     } else {
       const body = await apiFetch("/api/ai-chat", {
         method: "POST",
