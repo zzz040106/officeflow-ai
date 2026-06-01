@@ -72,6 +72,24 @@ test("POST /api/proxy-request executes and maps a custom API request", async (t)
   assert.equal(body.result.status, 200);
 });
 
+test("POST /api/extract-file accepts binary uploads without base64 JSON", async (t) => {
+  const baseUrl = await withTestServer(t);
+  const response = await fetch(`${baseUrl}/api/extract-file`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/octet-stream",
+      "x-file-name": encodeURIComponent("meeting.txt"),
+      "x-file-type": "text/plain",
+    },
+    body: Buffer.from("本周项目周会：张明负责客户问题，李娜更新报价模板。", "utf8"),
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.fileName, "meeting.txt");
+  assert.match(body.text, /张明/);
+});
+
 test("POST /api/workflows saves a workflow and GET /api/workflows lists it", async (t) => {
   const baseUrl = await withTestServer(t);
   const workflow = {

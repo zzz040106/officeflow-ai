@@ -30,6 +30,19 @@ async function readJsonBody(request) {
   return raw ? JSON.parse(raw) : {};
 }
 
+async function readRawBody(request, maxBytes = 120_000_000) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of request) {
+    total += chunk.length;
+    if (total > maxBytes) {
+      throw new Error("Request body is too large");
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 function createRuntimeServices({ fetchImpl, actions, aiSettings }) {
   return {
     httpRequest: async (config, context) =>
@@ -114,6 +127,16 @@ async function handleApiRequest(request, response, { store, fetchImpl }) {
   }
 
   if (request.method === "POST" && url.pathname === "/api/extract-file") {
+    const contentType = request.headers["content-type"] || "";
+    if (contentType.startsWith("application/octet-stream")) {
+      const name = decodeURIComponent(request.headers["x-file-name"] || "uploaded-file");
+      const type = request.headers["x-file-type"] || "";
+      const dataBuffer = await readRawBody(request);
+      const result = await extractUploadedFile({ name, type, dataBuffer });
+      sendJson(response, 200, result);
+      return true;
+    }
+
     const body = await readJsonBody(request);
     if (!body.name || !body.dataBase64) {
       sendJson(response, 400, { error: "name and dataBase64 are required" });

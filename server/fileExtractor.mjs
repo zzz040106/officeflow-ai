@@ -3,7 +3,7 @@ import { inflateRawSync, inflateSync } from "node:zlib";
 const MAX_EXCEL_ROWS_PER_SHEET = 80;
 const MAX_PDF_TEXT_CHUNKS = 500;
 const MAX_INLINE_PDF_BYTES = 5_000_000;
-const MAX_OFFICE_BYTES = 60_000_000;
+const MAX_OFFICE_BYTES = 120_000_000;
 
 function clean(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -237,7 +237,9 @@ function extractPdf(buffer) {
 
 export async function extractUploadedFile(payload) {
   const name = payload.name || "uploaded-file";
-  const raw = Buffer.from(payload.dataBase64 || "", "base64");
+  const raw = Buffer.isBuffer(payload.dataBuffer)
+    ? payload.dataBuffer
+    : Buffer.from(payload.dataBase64 || "", "base64");
   const extension = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
   if (raw.length > MAX_OFFICE_BYTES) {
     throw new Error("文件较大，已停止完整解析以保证页面流畅。请粘贴关键正文，或拆分后上传。");

@@ -119,12 +119,6 @@ const AI_PROVIDER_PRESETS = {
     model: "claude-sonnet-4-5",
     models: ["claude-sonnet-4-5", "claude-opus-4-1", "claude-3-5-haiku-latest"],
   },
-  gemini: {
-    label: "Google",
-    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    model: "gemini-2.5-flash",
-    models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
-  },
   qwen: {
     label: "阿里云",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -453,7 +447,7 @@ function createId(prefix) {
 }
 
 function aiSettingsFromForm() {
-  const provider = dom.aiProviderSelect.value || "openai";
+  const provider = AI_PROVIDER_PRESETS[dom.aiProviderSelect.value] ? dom.aiProviderSelect.value : "openai";
   return {
     id: state.activeAiProfileId,
     name: dom.aiProfileNameInput.value.trim(),
@@ -474,7 +468,7 @@ function defaultProfileName(provider = dom.aiProviderSelect.value, model = dom.a
 
 function updateProfileName(force = false) {
   const nextName = defaultProfileName();
-  if (force || !dom.aiProfileNameInput.value.trim() || /^(OpenAI|DeepSeek|Anthropic|Google|阿里云|Kimi) \//.test(dom.aiProfileNameInput.value.trim())) {
+  if (force || !dom.aiProfileNameInput.value.trim() || /^(OpenAI|DeepSeek|Anthropic|阿里云|Kimi) \//.test(dom.aiProfileNameInput.value.trim())) {
     dom.aiProfileNameInput.value = nextName;
   }
 }
@@ -1605,6 +1599,23 @@ async function apiFetch(path, options = {}) {
   return body;
 }
 
+async function extractFileViaApi(file) {
+  const response = await fetch("/api/extract-file", {
+    method: "POST",
+    headers: {
+      "content-type": "application/octet-stream",
+      "x-file-name": encodeURIComponent(file.name),
+      "x-file-type": file.type || "application/octet-stream",
+    },
+    body: file,
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body.error || `Request failed with ${response.status}`);
+  }
+  return body;
+}
+
 async function favoriteWorkflow() {
   if (dom.favoriteWorkflowButton) setBusy(dom.favoriteWorkflowButton, true);
   const workflow = workflowFromForm();
@@ -2713,27 +2724,18 @@ readMaterialFile = function (file) {
     reader.readAsText(file, "utf-8");
     return;
   }
-  const reader = new FileReader();
-  reader.onload = async () => {
-    try {
-      const dataUrl = String(reader.result || "");
-      const dataBase64 = dataUrl.includes(",") ? dataUrl.split(",").pop() : dataUrl;
-      const body = await apiFetch("/api/extract-file", {
-        method: "POST",
-        body: JSON.stringify({ name: file.name, type: file.type, dataBase64 }),
-      });
+  extractFileViaApi(file)
+    .then((body) => {
       if (input) input.value = body.text || "";
       if (status) status.textContent = `\u5df2\u89e3\u6790\uff1a${body.fileName || file.name}`;
-    } catch (error) {
+    })
+    .catch((error) => {
       if (status) status.textContent = `${error.message} \u8bf7\u6539\u4e3a\u624b\u52a8\u7c98\u8d34\u6587\u672c\u3002`;
-    }
-    syncScenarioToAdvanced();
-    markWorkflowDirty();
-  };
-  reader.onerror = () => {
-    if (status) status.textContent = "\u6587\u4ef6\u8bfb\u53d6\u5931\u8d25\uff0c\u8bf7\u624b\u52a8\u7c98\u8d34\u5185\u5bb9\u3002";
-  };
-  reader.readAsDataURL(file);
+    })
+    .finally(() => {
+      syncScenarioToAdvanced();
+      markWorkflowDirty();
+    });
 };
 
 appendWorkflowRunToConversations = function ({ prompt, output }) {
@@ -2878,7 +2880,8 @@ hideTutorial = function () {
 };
 
 setAiForm = function (settings = {}) {
-  dom.aiProviderSelect.value = settings.provider || "openai";
+  const provider = AI_PROVIDER_PRESETS[settings.provider] ? settings.provider : "openai";
+  dom.aiProviderSelect.value = provider;
   applyProviderPreset(false);
   dom.aiBaseUrlInput.value = settings.baseUrl || dom.aiBaseUrlInput.value;
   dom.aiModelInput.value = settings.model || dom.aiModelInput.value;
@@ -3216,16 +3219,7 @@ async function readAgentFile(file) {
     if (textExtensions.test(file.name)) {
       text = await file.text();
     } else {
-      const dataBase64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || "").split(",").pop() || "");
-        reader.onerror = () => reject(new Error("文件读取失败"));
-        reader.readAsDataURL(file);
-      });
-      const body = await apiFetch("/api/extract-file", {
-        method: "POST",
-        body: JSON.stringify({ name: file.name, type: file.type, dataBase64 }),
-      });
+      const body = await extractFileViaApi(file);
       text = body.text || "";
     }
     const clipped = text.length > 12000 ? `${text.slice(0, 12000)}\n\n（内容较长，已截取前 12000 字供本次 Agent 处理。）` : text;

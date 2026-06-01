@@ -4,7 +4,6 @@ const DEFAULT_BASE_URLS = {
   openai: "https://api.openai.com/v1",
   deepseek: "https://api.deepseek.com",
   anthropic: "https://api.anthropic.com/v1",
-  gemini: "https://generativelanguage.googleapis.com/v1beta",
   qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   kimi: "https://api.moonshot.ai/v1",
 };
@@ -13,7 +12,6 @@ const DEFAULT_MODELS = {
   openai: "gpt-4o-mini",
   deepseek: "deepseek-chat",
   anthropic: "claude-sonnet-4-5",
-  gemini: "gemini-2.5-flash",
   qwen: "qwen-plus",
   kimi: "moonshot-v1-8k",
 };
@@ -166,9 +164,6 @@ function extractTextFromProviderBody(provider, body) {
   if (provider === "anthropic") {
     return (body.content || []).filter((item) => item?.type === "text").map((item) => item.text).join("\n");
   }
-  if (provider === "gemini") {
-    return (body.candidates?.[0]?.content?.parts || []).map((part) => part.text || "").join("\n");
-  }
   return body.choices?.[0]?.message?.content || "";
 }
 
@@ -214,25 +209,6 @@ async function callAnthropic({ baseUrl, model, apiKey, messages, jsonMode }, fet
   return { response, body: await response.json().catch(() => ({})) };
 }
 
-async function callGemini({ baseUrl, model, apiKey, messages, jsonMode }, fetchImpl) {
-  const system = messages.find((message) => message.role === "system")?.content || "";
-  const userText = messages
-    .filter((message) => message.role !== "system")
-    .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${message.content}`)
-    .join("\n\n");
-  const url = `${baseUrl}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const response = await fetchImpl(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      generationConfig: { temperature: 0.2, ...(jsonMode ? { responseMimeType: "application/json" } : {}) },
-      ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
-      contents: [{ role: "user", parts: [{ text: userText }] }],
-    }),
-  });
-  return { response, body: await response.json().catch(() => ({})) };
-}
-
 async function callConfiguredModel(aiSettings = {}, messages = [], fetchImpl = fetch, { jsonMode = false } = {}) {
   const provider = aiSettings.provider || "openai";
   const apiKey = String(aiSettings.apiKey || "").trim();
@@ -243,9 +219,7 @@ async function callConfiguredModel(aiSettings = {}, messages = [], fetchImpl = f
   const { response, body } =
     provider === "anthropic"
       ? await callAnthropic(request, fetchImpl)
-      : provider === "gemini"
-        ? await callGemini(request, fetchImpl)
-        : await callOpenAiCompatible(request, fetchImpl);
+      : await callOpenAiCompatible(request, fetchImpl);
   if (!response.ok) {
     const detail = body.error?.message || body.message || body.error || `HTTP ${response.status}`;
     throw new Error(`AI 模型调用失败：${detail}`);

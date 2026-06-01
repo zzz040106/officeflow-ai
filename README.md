@@ -54,7 +54,6 @@ npm test
 
 - OpenAI
 - Claude
-- Gemini
 - DeepSeek
 - Kimi
 - Qwen
