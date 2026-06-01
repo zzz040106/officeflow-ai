@@ -93,6 +93,13 @@ function staticModeMessage() {
   return `当前是 index.html 静态预览模式。模板和界面可以查看，调用 AI 与运行流程需要先执行 npm start，再通过 ${currentRuntimeAddressText()} 打开。`;
 }
 
+function uploadConnectionMessage() {
+  if (window.location.protocol === "file:") {
+    return "上传接口不可用：当前是直接打开 index.html 的静态页面。请先在项目目录运行 npm install 和 npm start，再打开终端里显示的本地地址。";
+  }
+  return `上传接口连接失败：请确认 npm start 窗口仍在运行，页面地址是 ${currentRuntimeAddressText()}。如果刚更新过项目，请重新执行 npm install、npm start，并按 Ctrl + F5 刷新页面。`;
+}
+
 const AI_CONFIG_STORAGE_KEY = "officeflow-ai-model-config";
 const AI_PROFILES_STORAGE_KEY = "officeflow-ai-model-profiles";
 const AI_ACTIVE_PROFILE_STORAGE_KEY = "officeflow-ai-active-profile";
@@ -1617,7 +1624,7 @@ async function extractFileViaApi(file) {
       body: formData,
     });
   } catch (error) {
-    throw new Error(`上传连接失败，请确认已通过 npm start 启动本地服务，并用 ${currentRuntimeAddressText()} 打开页面。`);
+    throw new Error(uploadConnectionMessage());
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
