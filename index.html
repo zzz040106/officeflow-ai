@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OfficeFlow AI | AI 自动化办公工作台</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="自动化导航">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg class="brand-node-icon" viewBox="0 0 32 32" focusable="false">
+              <path class="brand-node-glow" d="M9 21 16 10 24 16 18 24 9 21Z" />
+              <path class="brand-node-link" d="M9 21 16 10 24 16M16 10 18 24M9 21 18 24" />
+              <circle class="brand-node-core" cx="16" cy="10" r="3.2" />
+              <circle class="brand-node-dot is-cyan" cx="9" cy="21" r="2.7" />
+              <circle class="brand-node-dot is-pink" cx="24" cy="16" r="2.7" />
+              <circle class="brand-node-dot is-violet" cx="18" cy="24" r="2.7" />
+              <path class="brand-node-spark" d="M7 8.5h5M9.5 6v5" />
+            </svg>
+          </span>
+          <div>
+            <strong>OfficeFlow AI</strong>
+            <span>AI 自动化办公</span>
+          </div>
+        </div>
+
+        <section class="assistant-card" aria-label="AI 办公助手状态">
+          <div>
+            <p class="section-label">办公助手</p>
+            <strong>流程待处理</strong>
+            <span>会议纪要 · 公文润色 · 合同摘要</span>
+          </div>
+        </section>
+
+        <details class="model-config-card" aria-label="AI 大模型配置">
+          <summary class="model-config-head">
+            <div>
+              <p class="section-label">AI 模型</p>
+              <strong>办公 Agent 大脑</strong>
+            </div>
+            <span id="aiConfigStatus">未配置</span>
+          </summary>
+          <div id="aiProfileList" class="compact-list model-profile-list"></div>
+          <div class="model-config-actions">
+            <button id="openModelModalButton" class="secondary-button" type="button">添加模型</button>
+            <button id="deleteAiProfileButton" class="ghost-button" type="button">删除</button>
+          </div>
+          <small>可保存多个模型配置，并在对话框右下角切换当前模型。</small>
+        </details>
+
+        <details class="sidebar-panel" open>
+          <summary class="sidebar-panel-head">
+            <span>办公场景库</span>
+          </summary>
+          <div id="templateList" class="template-list"></div>
+        </details>
+
+        <details class="sidebar-panel" open>
+          <summary class="sidebar-panel-head">
+            <span>对话记录</span>
+            <button id="newConversationButton" type="button">新建</button>
+          </summary>
+          <div id="conversationList" class="compact-list"></div>
+        </details>
+
+        <details class="sidebar-panel">
+          <summary class="sidebar-panel-head">
+            <span>收藏的办公流程</span>
+          </summary>
+          <div id="workflowList" class="saved-list">
+            <p class="muted">还没有收藏的办公流程。</p>
+          </div>
+        </details>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <h1>AI 自动化办公工作台</h1>
+            <p>选择办公场景，粘贴会议记录、周报材料或业务数据，系统会自动生成可复核的处理结果和节点日志。</p>
+          </div>
+        </header>
+
+        <section class="metrics-panel hidden-system" aria-label="AI 处理结果">
+          <div class="metrics-copy">
+            <p class="section-label">最近输出</p>
+            <h2>等待生成办公结果</h2>
+            <p>运行后这里会直接展示可复制、可复核的办公产出，而不是让用户理解底层流程。</p>
+          </div>
+          <div class="metric-grid">
+            <article class="metric-card">
+              <span>节省时间</span>
+              <strong id="metricOutputCount">0</strong>
+              <small>预估分钟</small>
+            </article>
+            <article class="metric-card">
+              <span>最近状态</span>
+              <strong id="metricStatus">待机</strong>
+              <small id="metricActiveWorkflow">还没有选择流程</small>
+            </article>
+            <article class="metric-card">
+              <span>待办数量</span>
+              <strong id="metricLogCount">0</strong>
+              <small>自动识别</small>
+            </article>
+            <article class="metric-card">
+              <span>已收藏</span>
+              <strong id="metricSavedCount">0</strong>
+              <small>本地流程</small>
+            </article>
+          </div>
+          <div id="outputMetricList" class="output-metric-list">
+            <span class="empty-chip">暂无 AI 处理结果</span>
+          </div>
+        </section>
+
+        <section id="agentChatPanel" class="agent-chat-panel" aria-label="办公 Agent 对话">
+          <div class="agent-chat-copy">
+            <p class="section-label">Office Agent</p>
+            <h2>今天要处理什么办公任务？</h2>
+            <p>可以直接提问，也可以让它帮你判断该选择哪个办公场景。</p>
+          </div>
+          <form id="agentChatForm" class="agent-chat-form">
+            <textarea id="agentChatInput" rows="3" placeholder="随心输入：比如“帮我把这段会议记录整理成可发给项目组的纪要”"></textarea>
+            <div class="agent-chat-actions">
+              <select id="agentModelSelect" aria-label="选择对话模型"></select>
+              <button id="agentChatSendButton" class="run-button" type="submit">发送</button>
+            </div>
+          </form>
+          <div id="agentChatMessages" class="agent-chat-messages">
+            <article class="agent-message assistant">
+              <span>OfficeFlow AI</span>
+              <p>你好，我可以帮你整理会议纪要、润色通知、提取合同要点、分析表格数据，或者先和你一起梳理办公需求。</p>
+            </article>
+          </div>
+        </section>
+
+        <section id="workbenchShell" class="workbench-shell" aria-label="办公场景处理区" aria-hidden="true">
+          <div class="builder-grid">
+            <form id="workflowForm" class="builder-panel" autocomplete="off">
+              <div class="panel-head">
+                <div>
+                  <p id="scenarioPanelEyebrow" class="section-label">会议助手</p>
+                  <h2 id="scenarioPanelTitle">会议信息</h2>
+                </div>
+                <div class="panel-command-zone">
+                  <span id="activeTemplateBadge" class="badge">会议纪要整理</span>
+                  <div class="workbench-actions">
+                    <button id="inspectorToggleButton" class="secondary-button" type="button">检查器</button>
+                    <button id="runWorkflowButton" class="run-button" type="button">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M8 5v14l11-7-11-7Z" />
+                      </svg>
+                      生成纪要
+                    </button>
+                    <button id="closeWorkbenchButton" class="ghost-button" type="button">收起</button>
+                  </div>
+                </div>
+              </div>
+
+              <section class="quick-config" aria-label="普通模式配置">
+                <div class="quick-config-head">
+                  <div>
+                    <p class="section-label">材料输入</p>
+                    <h3 id="scenarioTitle">会议纪要整理</h3>
+                    <p id="scenarioHint">上传或粘贴会议记录，系统会一次生成正式规范、数据导向和决策参考三个版本。</p>
+                  </div>
+                  <span id="scenarioModeBadge" class="mode-chip">固定模板</span>
+                </div>
+                <div id="scenarioFields" class="scenario-fields"></div>
+              </section>
+
+              <label class="field full hidden-system">
+              <span>流程名称</span>
+              <input id="workflowName" type="text" />
+              </label>
+
+              <label class="field full hidden-system">
+              <span>完成提示</span>
+              <input id="messageInput" type="text" placeholder="{{ai.title}} 已生成，建议复核后发送。" />
+              </label>
+
+              <div class="toggles hidden-system">
+              <label>
+                <input id="notificationToggle" type="checkbox" checked />
+                <span>浏览器通知</span>
+              </label>
+              <label>
+                <input id="speechToggle" type="checkbox" />
+                <span>语音播报</span>
+              </label>
+              </div>
+
+              <details id="advancedConfig" class="advanced-config hidden-system">
+                <summary>
+                  <span>高级流程配置</span>
+                  <small>展开后可查看 Prompt、JSON、条件表达式和输出映射。</small>
+                </summary>
+
+                <div class="advanced-fields">
+                  <div class="field-row">
+                  <label class="field method-field">
+                    <span>Method</span>
+                    <select id="methodSelect">
+                      <option>GET</option>
+                      <option>POST</option>
+                      <option>PUT</option>
+                      <option>PATCH</option>
+                      <option>DELETE</option>
+                    </select>
+                  </label>
+                  <label class="field url-field">
+                    <span>请求 URL</span>
+                    <input id="urlInput" type="url" placeholder="https://api.example.com/data" />
+                  </label>
+                  </div>
+
+                  <div class="text-grid">
+                  <label class="field">
+                    <span>Query 参数</span>
+                    <textarea id="queryInput" spellcheck="false" placeholder="key=value"></textarea>
+                  </label>
+                  <label class="field">
+                    <span>Headers</span>
+                    <textarea id="headersInput" spellcheck="false" placeholder="Accept=application/json"></textarea>
+                  </label>
+                  </div>
+
+                  <label class="field full">
+                  <span>Body</span>
+                  <textarea id="bodyInput" spellcheck="false" placeholder='{"title":"项目周会纪要"}'></textarea>
+                  </label>
+
+                  <label class="field full">
+                  <span>输出字段映射</span>
+                  <textarea id="outputMapInput" spellcheck="false" placeholder="rain=current.rain"></textarea>
+                  </label>
+
+                  <div class="condition-grid">
+                  <label class="field">
+                    <span>条件左值</span>
+                    <input id="conditionLeft" type="text" placeholder="ai.ready" />
+                  </label>
+                  <label class="field">
+                    <span>运算符</span>
+                    <select id="conditionOperator">
+                      <option value=">">&gt;</option>
+                      <option value=">=">&gt;=</option>
+                      <option value="<">&lt;</option>
+                      <option value="<=">&lt;=</option>
+                      <option value="===">===</option>
+                      <option value="!==">!==</option>
+                      <option value="contains">contains</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>右值</span>
+                    <input id="conditionRight" type="text" placeholder="0" />
+                  </label>
+                  </div>
+                </div>
+              </details>
+            </form>
+
+            <section id="mainResultPanel" class="main-result-panel" aria-label="会议纪要结果">
+              <div class="result-empty">
+                <strong>等待生成会议纪要</strong>
+                <span>填写或上传会议记录后点击“生成纪要”。</span>
+              </div>
+            </section>
+
+            <section class="flow-panel" aria-label="办公流程画布">
+              <div class="panel-head">
+              <div>
+                <p class="section-label">节点流</p>
+                <h2>线性运行流</h2>
+              </div>
+              <span class="badge">后端执行</span>
+              </div>
+
+              <div class="flow-stack">
+              <article class="flow-node" data-node="trigger" data-status="idle">
+                <span class="node-icon trigger-icon"></span>
+                <div>
+                  <strong>提交任务</strong>
+                  <p>点击运行按钮，启动一次办公流程。</p>
+                </div>
+              </article>
+              <article class="flow-node" data-node="api" data-status="idle">
+                <span class="node-icon api-icon"></span>
+                <div>
+                  <strong>AI 处理节点</strong>
+                  <p id="apiNodeMeta">生成：会议纪要整理</p>
+                </div>
+              </article>
+              <article class="flow-node" data-node="condition" data-status="idle">
+                <span class="node-icon condition-icon"></span>
+                <div>
+                  <strong>复核条件</strong>
+                  <p id="conditionNodeMeta">ai.ready === true</p>
+                </div>
+              </article>
+              <article class="flow-node" data-node="notify" data-status="idle">
+                <span class="node-icon action-icon"></span>
+                <div>
+                  <strong>完成提醒</strong>
+                  <p id="notifyNodeMeta">处理完成后返回提醒。</p>
+                </div>
+              </article>
+              </div>
+            </section>
+          </div>
+        </section>
+
+          <section id="inspectorPanel" class="result-panel inspector-panel" aria-label="结果检查器" aria-hidden="true">
+            <div class="panel-head">
+              <div>
+                <p class="section-label">检查器</p>
+                <h2 id="resultTitle">准备就绪</h2>
+              </div>
+              <button id="inspectorCloseButton" class="ghost-button" type="button">关闭</button>
+            </div>
+            <p id="resultMessage" class="muted">选择办公场景，配置模型后生成办公结果。</p>
+
+            <div class="output-block">
+              <div class="output-head">
+                <span>AI 处理结果</span>
+                <button id="clearOutputButton" type="button">清空</button>
+              </div>
+              <pre id="outputPreview">{}</pre>
+            </div>
+
+            <div class="output-block">
+              <div class="output-head">
+                <span>处理记录</span>
+              </div>
+              <ol id="logList" class="log-list">
+                <li class="empty-log">还没有运行日志。</li>
+              </ol>
+            </div>
+          </section>
+      </main>
+    </div>
+    <div id="surfaceScrim" class="surface-scrim" aria-hidden="true"></div>
+
+    <div id="modelModal" class="model-modal" aria-hidden="true">
+      <div class="model-modal-card" role="dialog" aria-modal="true" aria-labelledby="modelModalTitle">
+        <header class="model-modal-head">
+          <h2 id="modelModalTitle">添加模型</h2>
+          <button id="closeModelModalButton" type="button" aria-label="关闭">×</button>
+        </header>
+        <div id="providerGrid" class="provider-grid"></div>
+        <section class="provider-config-panel" aria-label="模型配置">
+          <div class="provider-config-title">
+            <strong id="providerConfigTitle">DeepSeek</strong>
+            <span id="providerConfigHint">选择模型版本并填写 API Key</span>
+          </div>
+          <label>
+            <span>配置名称</span>
+            <input id="aiProfileNameInput" type="text" autocomplete="off" placeholder="例如：DeepSeek 工作号" />
+          </label>
+          <label>
+            <span>Provider</span>
+            <select id="aiProviderSelect">
+              <option value="openai">OpenAI</option>
+              <option value="deepseek">DeepSeek</option>
+              <option value="anthropic">Anthropic Claude</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="qwen">阿里云通义千问</option>
+              <option value="kimi">Kimi</option>
+            </select>
+          </label>
+          <label>
+            <span>模型版本</span>
+            <select id="aiModelVersionSelect"></select>
+          </label>
+          <label>
+            <span>自定义 Model</span>
+            <input id="aiModelInput" type="text" autocomplete="off" placeholder="deepseek-chat / gpt-4o-mini" />
+          </label>
+          <label>
+            <span>Base URL</span>
+            <input id="aiBaseUrlInput" type="url" autocomplete="off" placeholder="https://api.openai.com/v1" />
+          </label>
+          <label>
+            <span>API Key</span>
+            <input id="aiApiKeyInput" type="password" autocomplete="off" placeholder="sk-..." />
+          </label>
+          <details class="advanced-model-config">
+            <summary>高级配置</summary>
+            <div class="advanced-model-grid">
+              <label>
+                <span>上下文窗口-输入</span>
+                <input id="aiContextInput" type="text" placeholder="为空，系统默认使用最优配置" />
+              </label>
+              <label>
+                <span>上下文窗口-输出</span>
+                <input id="aiContextOutput" type="text" placeholder="为空，系统默认使用最优配置" />
+              </label>
+              <label>
+                <span>工具调用轮次</span>
+                <input id="aiToolRounds" type="text" placeholder="为空，系统默认使用最优配置" />
+              </label>
+            </div>
+          </details>
+          <div class="model-modal-actions">
+            <button id="closeModelModalSecondaryButton" class="ghost-button" type="button">取消</button>
+            <button id="saveAiProfileButton" class="run-button" type="button">提交</button>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script defer src="./src/app.js"></script>
+  </body>
+</html>

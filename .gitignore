@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Runtime data and local generated files
+data/
+output/
+*.log
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local editor/runtime folders
+.idea/
+.vscode/
+.runtime/
+.playwright-cli/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build/cache artifacts
+dist/
+coverage/
+__pycache__/
+*.pyc
+
+# Local experiment copies
+AI自动化办公2/
