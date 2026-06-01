@@ -5,5 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node scripts/serve.mjs"
+  },
+  "dependencies": {
+    "busboy": "^1.6.0"
   }
 }

@@ -1,6 +1,8 @@
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 
+import Busboy from "busboy";
+
 import { executeHttpRequestNode } from "../src/httpRequest.js";
 import { runWorkflow } from "../src/workflowEngine.js";
 import { createStaticServer, resolveRequestPath } from "../scripts/staticServer.mjs";
@@ -30,7 +32,9 @@ async function readJsonBody(request) {
   return raw ? JSON.parse(raw) : {};
 }
 
-async function readRawBody(request, maxBytes = 120_000_000) {
+const MAX_UPLOAD_BYTES = 120_000_000;
+
+async function readRawBody(request, maxBytes = MAX_UPLOAD_BYTES) {
   const chunks = [];
   let total = 0;
   for await (const chunk of request) {
@@ -43,51 +47,63 @@ async function readRawBody(request, maxBytes = 120_000_000) {
   return Buffer.concat(chunks);
 }
 
-function parseMultipartUpload(raw, contentType) {
-  const boundaryMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
-  const boundary = boundaryMatch?.[1] || boundaryMatch?.[2];
-  if (!boundary) {
-    throw new Error("上传请求缺少 multipart boundary");
-  }
+function parseMultipartUpload(request) {
+  return new Promise((resolveUpload, rejectUpload) => {
+    let settled = false;
+    const finish = (error, upload) => {
+      if (settled) return;
+      settled = true;
+      if (error) rejectUpload(error);
+      else resolveUpload(upload);
+    };
 
-  const boundaryBuffer = Buffer.from(`--${boundary}`);
-  const headerBreak = Buffer.from("\r\n\r\n");
-  let cursor = raw.indexOf(boundaryBuffer);
+    const busboy = Busboy({
+      headers: request.headers,
+      defParamCharset: "utf8",
+      limits: {
+        files: 1,
+        fileSize: MAX_UPLOAD_BYTES,
+      },
+    });
 
-  while (cursor >= 0) {
-    let partStart = cursor + boundaryBuffer.length;
-    if (raw[partStart] === 45 && raw[partStart + 1] === 45) break;
-    if (raw[partStart] === 13 && raw[partStart + 1] === 10) partStart += 2;
+    let upload = null;
+    let total = 0;
 
-    const headersEnd = raw.indexOf(headerBreak, partStart);
-    if (headersEnd < 0) break;
+    busboy.on("file", (_fieldName, file, info = {}) => {
+      const chunks = [];
+      const fileName = info.filename || "uploaded-file";
+      const mimeType = info.mimeType || "";
 
-    const nextBoundary = raw.indexOf(boundaryBuffer, headersEnd + headerBreak.length);
-    if (nextBoundary < 0) break;
+      file.on("data", (chunk) => {
+        total += chunk.length;
+        chunks.push(chunk);
+      });
 
-    const headers = raw.subarray(partStart, headersEnd).toString("utf8");
-    let dataEnd = nextBoundary;
-    if (raw[dataEnd - 2] === 13 && raw[dataEnd - 1] === 10) dataEnd -= 2;
-    const dataBuffer = raw.subarray(headersEnd + headerBreak.length, dataEnd);
+      file.on("limit", () => {
+        finish(new Error("文件超过 120MB，请拆分后上传。"));
+        request.destroy();
+      });
 
-    const disposition = /content-disposition:\s*([^\r\n]+)/i.exec(headers)?.[1] || "";
-    const fileNameStar = /filename\*=UTF-8''([^;\r\n]+)/i.exec(disposition)?.[1];
-    const fileNameRaw = /filename="([^"]*)"/i.exec(disposition)?.[1] || /filename=([^;\r\n]+)/i.exec(disposition)?.[1];
-    const contentTypeHeader = /content-type:\s*([^\r\n]+)/i.exec(headers)?.[1]?.trim() || "";
+      file.on("end", () => {
+        upload = {
+          name: fileName,
+          type: mimeType,
+          dataBuffer: Buffer.concat(chunks, total),
+        };
+      });
+    });
 
-    if (fileNameStar || fileNameRaw) {
-      const rawName = fileNameStar ? decodeURIComponent(fileNameStar) : fileNameRaw;
-      return {
-        name: rawName || "uploaded-file",
-        type: contentTypeHeader,
-        dataBuffer,
-      };
-    }
+    busboy.on("error", (error) => finish(error));
+    busboy.on("finish", () => {
+      if (!upload) {
+        finish(new Error("没有读取到上传文件，请重新选择文件。"));
+        return;
+      }
+      finish(null, upload);
+    });
 
-    cursor = nextBoundary;
-  }
-
-  throw new Error("没有读取到上传文件，请重新选择文件。");
+    request.pipe(busboy);
+  });
 }
 
 function createRuntimeServices({ fetchImpl, actions, aiSettings }) {
@@ -176,8 +192,7 @@ async function handleApiRequest(request, response, { store, fetchImpl }) {
   if (request.method === "POST" && url.pathname === "/api/extract-file") {
     const contentType = request.headers["content-type"] || "";
     if (contentType.startsWith("multipart/form-data")) {
-      const raw = await readRawBody(request);
-      const upload = parseMultipartUpload(raw, contentType);
+      const upload = await parseMultipartUpload(request);
       const result = await extractUploadedFile(upload);
       sendJson(response, 200, result);
       return true;
