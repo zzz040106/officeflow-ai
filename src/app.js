@@ -1616,6 +1616,19 @@ async function extractFileViaApi(file) {
   return body;
 }
 
+const LOCAL_TEXT_PREVIEW_CHARS = 80_000;
+
+async function readLocalTextPreview(file) {
+  const text = await file.slice(0, LOCAL_TEXT_PREVIEW_CHARS).text();
+  const isPartial = file.size > LOCAL_TEXT_PREVIEW_CHARS;
+  return {
+    text: isPartial
+      ? `${text}\n\n（内容较长，已截取前 ${LOCAL_TEXT_PREVIEW_CHARS} 字用于 AI 分析。）`
+      : text,
+    note: isPartial ? `内容较长，已截取前 ${LOCAL_TEXT_PREVIEW_CHARS} 字用于 AI 分析。` : "",
+  };
+}
+
 async function favoriteWorkflow() {
   if (dom.favoriteWorkflowButton) setBusy(dom.favoriteWorkflowButton, true);
   const workflow = workflowFromForm();
@@ -2711,17 +2724,16 @@ readMaterialFile = function (file) {
   if (status) status.textContent = `\u6b63\u5728\u8bfb\u53d6\uff1a${file.name}`;
   const textExtensions = /\.(txt|md|csv|json|log)$/i;
   if (state.staticMode || textExtensions.test(file.name)) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (input) input.value = String(reader.result || "");
-      if (status) status.textContent = `\u5df2\u8bfb\u53d6\uff1a${file.name}`;
-      syncScenarioToAdvanced();
-      markWorkflowDirty();
-    };
-    reader.onerror = () => {
-      if (status) status.textContent = "\u6587\u4ef6\u8bfb\u53d6\u5931\u8d25\uff0c\u8bf7\u624b\u52a8\u7c98\u8d34\u5185\u5bb9\u3002";
-    };
-    reader.readAsText(file, "utf-8");
+    readLocalTextPreview(file)
+      .then((result) => {
+        if (input) input.value = result.text;
+        if (status) status.textContent = result.note || `\u5df2\u8bfb\u53d6\uff1a${file.name}`;
+        syncScenarioToAdvanced();
+        markWorkflowDirty();
+      })
+      .catch(() => {
+        if (status) status.textContent = "\u6587\u4ef6\u8bfb\u53d6\u5931\u8d25\uff0c\u8bf7\u624b\u52a8\u7c98\u8d34\u5185\u5bb9\u3002";
+      });
     return;
   }
   extractFileViaApi(file)
@@ -3216,11 +3228,15 @@ async function readAgentFile(file) {
   const textExtensions = /\.(txt|md|csv|json|log)$/i;
   try {
     let text = "";
+    let note = "";
     if (textExtensions.test(file.name)) {
-      text = await file.text();
+      const result = await readLocalTextPreview(file);
+      text = result.text;
+      note = result.note;
     } else {
       const body = await extractFileViaApi(file);
       text = body.text || "";
+      note = body.note || "";
     }
     const clipped = text.length > 12000 ? `${text.slice(0, 12000)}\n\n（内容较长，已截取前 12000 字供本次 Agent 处理。）` : text;
     state.chatMessages = state.chatMessages.filter((message) => !message.content?.startsWith("正在读取 "));
@@ -3232,7 +3248,7 @@ async function readAgentFile(file) {
     state.chatMessages.push({
       role: "assistant",
       name: "OfficeFlow AI",
-      content: `${body.note || `已读取 ${file.name}。`} 你可以直接说“生成会议纪要 Word”“提取合同摘要 Excel”或“整理成正式通知 PDF”。`,
+      content: `${note || `已读取 ${file.name}。`} 你可以继续提出处理要求。`,
     });
   } catch (error) {
     state.chatMessages.push({ role: "assistant", name: "OfficeFlow AI", content: `文件处理失败：${error.message}` });

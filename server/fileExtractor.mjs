@@ -3,6 +3,7 @@ import { inflateRawSync, inflateSync } from "node:zlib";
 const MAX_EXCEL_ROWS_PER_SHEET = 80;
 const MAX_EXCEL_SHEETS = 3;
 const MAX_WORD_PARAGRAPHS = 220;
+const MAX_EXTRACTED_TEXT_CHARS = 80_000;
 const MAX_PDF_TEXT_CHUNKS = 500;
 const MAX_INLINE_PDF_BYTES = 5_000_000;
 const MAX_OFFICE_BYTES = 120_000_000;
@@ -24,6 +25,17 @@ function decodeText(buffer) {
   const utf8 = buffer.toString("utf8");
   if (!utf8.includes("\uFFFD")) return utf8.replace(/^\uFEFF/, "");
   return buffer.toString("latin1");
+}
+
+function limitExtractedText(text, note = "") {
+  const value = String(text || "");
+  if (value.length <= MAX_EXTRACTED_TEXT_CHARS) {
+    return { text: value, note };
+  }
+  return {
+    text: `${value.slice(0, MAX_EXTRACTED_TEXT_CHARS)}\n\n（内容较长，已截取前 ${MAX_EXTRACTED_TEXT_CHARS} 字用于 AI 分析。）`,
+    note: note || `内容较长，已截取前 ${MAX_EXTRACTED_TEXT_CHARS} 字用于 AI 分析。`,
+  };
 }
 
 function shouldTakeZipEntry(name, wanted) {
@@ -281,11 +293,15 @@ export async function extractUploadedFile(payload) {
   }
 
   const limited = ["docx", "xlsx", "xlsm", "xltx"].includes(extension);
+  const limitedResult = limitExtractedText(
+    text,
+    limited ? "已快速提取文件中的关键文本，未完整还原全部格式。" : "",
+  );
   return {
     ok: true,
     fileName: name,
-    text,
-    partial: limited,
-    note: limited ? "已快速提取文件中的关键文本，未完整还原全部格式。" : "",
+    text: limitedResult.text,
+    partial: limited || limitedResult.text !== text,
+    note: limitedResult.note,
   };
 }
