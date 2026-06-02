@@ -105,6 +105,7 @@ const AI_PROFILES_STORAGE_KEY = "officeflow-ai-model-profiles";
 const AI_ACTIVE_PROFILE_STORAGE_KEY = "officeflow-ai-active-profile";
 const CONVERSATION_STORAGE_KEY = "officeflow-conversations";
 const ACTIVE_CONVERSATION_STORAGE_KEY = "officeflow-active-conversation";
+const EXPECTED_SERVER_VERSION = "officeflow-ai-upload-v3";
 
 const RESULT_LABELS_BY_TASK = {
   meeting: { points: "会议结论", todos: "待办事项" },
@@ -1615,6 +1616,19 @@ async function apiFetch(path, options = {}) {
 }
 
 async function extractFileViaApi(file) {
+  let health;
+  try {
+    const healthResponse = await fetch("/api/health", { cache: "no-store" });
+    health = await healthResponse.json();
+  } catch (error) {
+    throw new Error(uploadConnectionMessage());
+  }
+  if (!health?.ok || health.version !== EXPECTED_SERVER_VERSION) {
+    throw new Error(
+      `当前页面连接的不是最新上传服务。请关闭旧的 npm start 窗口，运行 taskkill /F /IM node.exe 后重新 npm start，再按 Ctrl + F5 刷新页面。`,
+    );
+  }
+
   const formData = new FormData();
   formData.append("file", file, file.name);
   let response;

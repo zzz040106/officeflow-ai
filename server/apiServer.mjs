@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+﻿import { createServer } from "node:http";
 import { resolve } from "node:path";
 
 import Busboy from "busboy";
@@ -11,6 +11,8 @@ import { exportOfficeFile } from "./fileExporter.mjs";
 import { runOfficeAITask, runOfficeChat } from "./llmOfficeAI.mjs";
 import { JsonStore } from "./store.mjs";
 import { createWorkflowFromTemplate, templates } from "./templates.mjs";
+
+const APP_VERSION = "officeflow-ai-upload-v3";
 
 function sendJson(response, status, body) {
   response.writeHead(status, {
@@ -130,7 +132,7 @@ async function handleApiRequest(request, response, { store, fetchImpl }) {
   const url = new URL(request.url || "/", "http://local.test");
 
   if (request.method === "GET" && url.pathname === "/api/health") {
-    sendJson(response, 200, { ok: true });
+    sendJson(response, 200, { ok: true, app: "OfficeFlow AI", version: APP_VERSION });
     return true;
   }
 
@@ -319,6 +321,14 @@ export function listenApiServer({
       return;
     }
 
+    if (error.code === "EADDRINUSE") {
+      console.error(
+        `端口 ${port} 已被占用。请先关闭旧的 npm start 窗口，或运行 taskkill /F /IM node.exe 后重新 npm start。`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+
     throw error;
   });
 
@@ -328,3 +338,4 @@ export function listenApiServer({
 
   return server;
 }
+
